@@ -62,12 +62,19 @@ router = APIRouter()
 security = Security()
 
 
-@router.on_startup
+@router.on_event("startup")
 async def startup():
     await db.connect()
+    roles = await db.fetch_all(roles_table.select())
+    if not roles:
+        query = roles_table.insert().values([{'id': 0, 'role': 'user'},
+                                             {'id': 1, 'role': 'master'},
+                                             {'id': 2, 'role': 'admin'}]
+                                            )
+        await db.execute(query)
 
 
-@router.on_shutdown
+@router.on_event("shutdown")
 async def shutdown():
     await db.disconnect()
 
