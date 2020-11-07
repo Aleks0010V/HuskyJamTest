@@ -1,19 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from typing import Optional, Union
-from auth import oauth2_scheme
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from jose import jwt
+from jose import jwt, JWTError
+from typing import Optional, Union
+from databases import Database
 
-from models import users_table, tokens_table, roles_table
-from database import db
+
+from models import users_table, roles_table
+from auth import oauth2_scheme
+from database import db, connect
 
 
 # ==================================================================================
 # ================================ models ==========================================
-class User(BaseModel):
+class UserInfo(BaseModel):
     username: Optional[str] = ''
     full_name: Optional[str] = ''
     password: Optional[str] = ''
@@ -31,6 +33,18 @@ class NewUser(BaseModel):
     full_name: Optional[str] = ''
     car_model: Optional[str] = ''
 
+
+class NewUserResponse(BaseModel):
+    id: int
+    username: str
+    full_name: str
+    car_model: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
 # ==================================================================================
 
 
@@ -43,8 +57,9 @@ class Security:
     SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
     ALGORITHM = "HS256"
 
-    def __init__(self):
+    def __init__(self, _db: Database):
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        self.db = _db
 
     def crypt(self, password: str) -> str:
         return self.pwd_context.hash(password)
@@ -52,42 +67,62 @@ class Security:
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         return self.pwd_context.verify(plain_password, hashed_password)
 
-    @staticmethod
-    async def get_user_by_id(user_id: int) -> Union[None, User]:
+    @connect
+    async def get_user_by_id(self, user_id: int) -> Union[None, UserInfo]:
         if not user_id:
             return
-        get_user_query = users_table.select().where(id=user_id)
-        if not (res := await db.fetch_one(get_user_query)):
+        get_user_query = users_table.select().where(users_table.c.id == user_id)
+        if not (res := await self.db.fetch_one(get_user_query)):
             return
         else:
-            return User(username=res['username'], full_name=res['full_name'], car_model=res['car_model'])
+            return UserInfo(username=res['username'], full_name=res['full_name'], car_model=res['car_model'])
 
-    @staticmethod
-    async def get_user_by_username(username: str) -> Union[None, User]:
+    @connect
+    async def get_user_by_username(self, username: str) -> Union[None, UserInfo]:
         if not username:
             return
-        get_user_query = users_table.select().where(username=username)
-        if not (res := await db.fetch_one(get_user_query)):
+        get_user_query = users_table.select().where(users_table.c.username == username)
+        if not (res := await self.db.fetch_one(get_user_query)):
             return
         else:
-            return User(username=res['username'], full_name=res['full_name'], car_model=res['car_model'])
+            return UserInfo(username=res['username'], full_name=res['full_name'], car_model=res['car_model'])
 
-    async def authenticate_user(self, user: Login) -> Union[None, User]:
+    @connect
+    async def authenticate_user(self, user: Login) -> Union[None, dict]:
         if not user:
             return
 
-        get_user_query = users_table.select().where(username=user.username)
-        if not (res := await db.fetch_one(get_user_query)) or not self.verify_password(user.password, res['hashed_password']):
+        get_user_query = users_table.select().where(users_table.c.username == user.username)
+        if not (res := await self.db.fetch_one(get_user_query)) or not self.verify_password(user.password,
+                                                                                            res['hashed_password']):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        return User(username=res['username'], full_name=res['full_name'], car_model=res['car_model'])
+        res = dict(res)
+        res.pop('hashed_password')
+        return res
 
-    @staticmethod
-    async def get_user_by_token(token: str = Depends(oauth2_scheme)) -> Union[None, User]:
-        pass
+    @connect
+    async def get_user_by_token(self, token: str = Depends(oauth2_scheme)):
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        try:
+            payload = jwt.decode(token, self.SECRET_KEY, algorithms=[self.ALGORITHM])
+            username: str = payload.get("sub")
+            if username is None:
+                raise credentials_exception
+        except JWTError:
+            raise credentials_exception
+        user_query = users_table.select().where(users_table.c.username == username)
+        user = await self.db.fetch_one(user_query)
+        if user is None:
+            raise credentials_exception
+        return user
 
     @staticmethod
     def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -102,7 +137,7 @@ class Security:
 
 
 router = APIRouter()
-security = Security()
+security = Security(db)
 
 
 @router.on_event("startup")
@@ -124,7 +159,7 @@ async def shutdown():
 # ==================================================================================
 
 
-@router.post('/create_user')
+@router.post('/create_user', response_model=NewUserResponse)
 async def create_user(user: NewUser):
     query = users_table.insert().values(username=user.username,
                                         hashed_password=security.crypt(user.password),
@@ -133,15 +168,19 @@ async def create_user(user: NewUser):
                                         role_id=0
                                         )
     last_record_id = await db.execute(query)
-    return {**user.dict(), "id": last_record_id}
+    res = {**user.dict(), "id": last_record_id}
+    res.pop('password')
+    return res
 
 
-@router.patch('/update_user_info', dependencies=[Depends(Security.get_user_by_token)])
-async def update_user_info(user: User, token: str = Depends(oauth2_scheme)):
+@router.patch('/update_user_info')
+async def update_user_info(info: UserInfo, user: UserInfo = Depends(security.get_user_by_token)):
     pass
 
 
-@router.post('/login')
+@router.post('/login', response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = await security.authenticate_user(Login(username=form_data.username, password=form_data.password))
-
+    access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
+    token = security.create_access_token(data={"sub": user['username']}, expires_delta=access_token_expires)
+    return {"access_token": token, "token_type": "bearer"}

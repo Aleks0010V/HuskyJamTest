@@ -22,7 +22,7 @@ services:
     - "80:80"
     depends_on:
       mysql:
-        condition: service_started
+        condition: service_healthy
     links:
       - mysql
     networks:
