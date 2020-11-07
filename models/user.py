@@ -1,6 +1,8 @@
 import sqlalchemy
 from database import engine
 from sqlalchemy.dialects.mysql import TEXT
+from pydantic import BaseModel
+from typing import Optional
 
 metadata = sqlalchemy.MetaData(engine)
 
@@ -34,3 +36,52 @@ tokens_table = sqlalchemy.Table(
     sqlalchemy.Column("user_id", sqlalchemy.ForeignKey("users.id")),
 )
 metadata.create_all(tables=[roles_table, users_table, tokens_table], checkfirst=True)
+
+
+# ==================================================================================
+# ================================ models ==========================================
+class UserInfo(BaseModel):
+    username: Optional[str] = ''
+    full_name: Optional[str] = ''
+    password: Optional[str] = ''
+    car_model: Optional[str] = ''
+
+
+class UserInDB(BaseModel):
+    username: Optional[str] = ''
+    full_name: Optional[str] = ''
+    hashed_password: Optional[str] = ''
+    car_model: Optional[str] = ''
+
+
+class SecuredUserInfo(BaseModel):
+    username: Optional[str] = ''
+    full_name: Optional[str] = ''
+    hashed_password: Optional[str] = ''
+    car_model: Optional[str] = ''
+
+
+class Login(BaseModel):
+    username: str
+    password: str
+
+
+class NewUser(BaseModel):
+    username: str
+    password: str
+    full_name: Optional[str] = ''
+    car_model: Optional[str] = ''
+
+
+class NewUserResponse(BaseModel):
+    id: int
+    username: str
+    full_name: str
+    car_model: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+# ==================================================================================

@@ -1,141 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel
-from passlib.context import CryptContext
-from datetime import datetime, timedelta
-from jose import jwt, JWTError
-from typing import Optional, Union
-from databases import Database
+from datetime import timedelta
 
 
-from models import users_table, roles_table
-from auth import oauth2_scheme
-from database import db, connect
-
-
-# ==================================================================================
-# ================================ models ==========================================
-class UserInfo(BaseModel):
-    username: Optional[str] = ''
-    full_name: Optional[str] = ''
-    password: Optional[str] = ''
-    car_model: Optional[str] = ''
-
-
-class Login(BaseModel):
-    username: str
-    password: str
-
-
-class NewUser(BaseModel):
-    username: str
-    password: str
-    full_name: Optional[str] = ''
-    car_model: Optional[str] = ''
-
-
-class NewUserResponse(BaseModel):
-    id: int
-    username: str
-    full_name: str
-    car_model: str
-
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-# ==================================================================================
+from models import users_table, roles_table, UserInfo, UserInDB, SecuredUserInfo, Login, Token, NewUser, NewUserResponse
+from auth import Security
+from database import db
 
 
 # ==================================================================================
 # ======================== configuration ===========================================
-class Security:
-    ACCESS_TOKEN_EXPIRE_MINUTES = 15
-    # to get a string like this run:
-    # openssl rand -hex 32
-    SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
-    ALGORITHM = "HS256"
-
-    def __init__(self, _db: Database):
-        self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        self.db = _db
-
-    def crypt(self, password: str) -> str:
-        return self.pwd_context.hash(password)
-
-    def verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        return self.pwd_context.verify(plain_password, hashed_password)
-
-    @connect
-    async def get_user_by_id(self, user_id: int) -> Union[None, UserInfo]:
-        if not user_id:
-            return
-        get_user_query = users_table.select().where(users_table.c.id == user_id)
-        if not (res := await self.db.fetch_one(get_user_query)):
-            return
-        else:
-            return UserInfo(username=res['username'], full_name=res['full_name'], car_model=res['car_model'])
-
-    @connect
-    async def get_user_by_username(self, username: str) -> Union[None, UserInfo]:
-        if not username:
-            return
-        get_user_query = users_table.select().where(users_table.c.username == username)
-        if not (res := await self.db.fetch_one(get_user_query)):
-            return
-        else:
-            return UserInfo(username=res['username'], full_name=res['full_name'], car_model=res['car_model'])
-
-    @connect
-    async def authenticate_user(self, user: Login) -> Union[None, dict]:
-        if not user:
-            return
-
-        get_user_query = users_table.select().where(users_table.c.username == user.username)
-        if not (res := await self.db.fetch_one(get_user_query)) or not self.verify_password(user.password,
-                                                                                            res['hashed_password']):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect username or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        res = dict(res)
-        res.pop('hashed_password')
-        return res
-
-    @connect
-    async def get_user_by_token(self, token: str = Depends(oauth2_scheme)):
-        credentials_exception = HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        try:
-            payload = jwt.decode(token, self.SECRET_KEY, algorithms=[self.ALGORITHM])
-            username: str = payload.get("sub")
-            if username is None:
-                raise credentials_exception
-        except JWTError:
-            raise credentials_exception
-        user_query = users_table.select().where(users_table.c.username == username)
-        user = await self.db.fetch_one(user_query)
-        if user is None:
-            raise credentials_exception
-        return user
-
-    @staticmethod
-    def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-        to_encode = data.copy()
-        if expires_delta:
-            expire = datetime.utcnow() + expires_delta
-        else:
-            expire = datetime.utcnow() + timedelta(minutes=15)
-        to_encode.update({"exp": expire})
-        encoded_jwt = jwt.encode(to_encode, Security.SECRET_KEY, algorithm=Security.ALGORITHM)
-        return encoded_jwt
-
-
 router = APIRouter()
 security = Security(db)
 
@@ -167,15 +41,52 @@ async def create_user(user: NewUser):
                                         full_name=user.full_name,
                                         role_id=0
                                         )
+    if not db.is_connected:
+        await db.connect()
     last_record_id = await db.execute(query)
     res = {**user.dict(), "id": last_record_id}
     res.pop('password')
     return res
 
 
-@router.patch('/update_user_info')
-async def update_user_info(info: UserInfo, user: UserInfo = Depends(security.get_user_by_token)):
-    pass
+@router.patch('/update_user_info', response_model=SecuredUserInfo)
+async def update_user_info(info: UserInfo, user: UserInDB = Depends(security.get_user_by_token)):
+    """user can provide fields username, full_name, password and car_model to update them"""
+    if not info:
+        return
+    elif not db.is_connected:
+        await db.connect()
+
+    fields_to_update = {}
+    if info.username and info.username != user.username:
+        check_name = users_table.select().where(users_table.c.username == info.username)
+        res = await db.fetch_one(check_name)
+        if not res:
+            fields_to_update['username'] = info.username
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="username already exists",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+    if info.password and not security.verify_password(info.password, user.hashed_password):
+        fields_to_update['hashed_password'] = security.crypt(info.password)
+    if info.full_name and info.full_name != user.full_name:
+        fields_to_update['full_name'] = info.full_name
+    if info.car_model and info.car_model != user.car_model:
+        fields_to_update['car_model'] = info.car_model
+
+    query = users_table.update().values(**fields_to_update).where(users_table.c.username == user.username)
+    await db.execute(query)
+    fields_to_update.pop('hashed_password')
+    return fields_to_update
+
+
+@router.get('/me', response_model=SecuredUserInfo)
+async def get_current_user(user: UserInDB = Depends(security.get_user_by_token)):
+    user = user.dict()
+    user.pop('hashed_password')
+    return user
 
 
 @router.post('/login', response_model=Token)
