@@ -1,5 +1,6 @@
 import sqlalchemy
 from database import engine
+from pydantic import BaseModel
 
 from models import users_table
 
@@ -18,3 +19,11 @@ if not engine.dialect.has_table(engine, schedule_table.name):
     if not engine.dialect.has_table(engine, users_table.name):
         metadata.create_all(tables=[users_table])
     metadata.create_all(tables=[schedule_table])
+
+
+# ==================================================================================
+# ================================ models ==========================================
+class Appointment(BaseModel):
+    weekday: int
+    time: int
+    master_id: int
