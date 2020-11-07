@@ -1,7 +1,7 @@
 import sqlalchemy
 from database import engine
 from sqlalchemy.dialects.mysql import TEXT
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 metadata = sqlalchemy.MetaData(engine)
@@ -41,10 +41,26 @@ metadata.create_all(tables=[roles_table, users_table, tokens_table], checkfirst=
 # ==================================================================================
 # ================================ models ==========================================
 class UserInfo(BaseModel):
-    username: Optional[str] = ''
-    full_name: Optional[str] = ''
+    username: Optional[str] = Field(
+        None, title='Username', max_length=100,
+    )
     password: Optional[str] = ''
-    car_model: Optional[str] = ''
+    full_name: Optional[str] = Field(
+        None, title='Full name', max_length=512
+    )
+    car_model: Optional[str] = Field(
+        None, title='Car model', max_length=100
+    )
+
+    class Config:
+        schema_extra = {
+            'example': {
+                'username': 'aleks0010v',
+                'password': '123456',
+                'full_name': 'Aleksandr V',
+                'car_model': 'Maserati Ghibli III'
+            }
+        }
 
 
 class UserInDB(BaseModel):
@@ -55,22 +71,60 @@ class UserInDB(BaseModel):
 
 
 class SecuredUserInfo(BaseModel):
-    username: Optional[str] = ''
-    full_name: Optional[str] = ''
-    hashed_password: Optional[str] = ''
-    car_model: Optional[str] = ''
+    username: Optional[str] = Field(
+        None, title='Username', max_length=100
+    )
+    full_name: Optional[str] = Field(
+        None, title='Full name', max_length=512
+    )
+    car_model: Optional[str] = Field(
+        None, title='Car model', max_length=100
+    )
+
+    class Config:
+        schema_extra = {
+            'example': {
+                'username': 'aleks0010v',
+                'full_name': 'Aleksandr V',
+                'car_model': 'Maserati Ghibli III'
+            }
+        }
 
 
 class Login(BaseModel):
     username: str
     password: str
 
+    class Config:
+        schema_extra = {
+            'example': {
+                'username': 'aleks0010v',
+                'password': '123456'
+            }
+        }
+
 
 class NewUser(BaseModel):
-    username: str
+    username: str = Field(
+        None, title='Username', max_length=100
+    )
     password: str
-    full_name: Optional[str] = ''
-    car_model: Optional[str] = ''
+    full_name: Optional[str] = Field(
+        None, title='Full name', max_length=512
+    )
+    car_model: Optional[str] = Field(
+        None, title='Car model', max_length=100
+    )
+
+    class Config:
+        schema_extra = {
+            'example': {
+                'username': 'aleks0010v',
+                'password': '123456',
+                'full_name': 'Aleksandr V',
+                'car_model': 'Maserati Ghibli III'
+            }
+        }
 
 
 class NewUserResponse(BaseModel):
@@ -79,9 +133,27 @@ class NewUserResponse(BaseModel):
     full_name: str
     car_model: str
 
+    class Config:
+        schema_extra = {
+            'example': {
+                'username': 'aleks0010v',
+                'id': 666,
+                'full_name': 'Aleksandr V',
+                'car_model': 'Maserati Ghibli III'
+            }
+        }
+
 
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+    class Config:
+        schema_extra = {
+            'example': {
+                'access_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbGVrcyIsImV4cCI6MTYwNDc3Mzg5Nn0.5DUFYCvxnpLcFzUbAnmZ7iRCflxXFzGQMQF6j-Bj0Xo',
+                'token_type': 'bearer'
+            }
+        }
 
 # ==================================================================================

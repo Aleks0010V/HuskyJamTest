@@ -19,7 +19,7 @@ async def startup():
     await db.connect()
     roles = await db.fetch_all(roles_table.select())
     if not roles:
-        query = roles_table.insert().values([{'id': 0, 'role': 'user'},
+        query = roles_table.insert().values([{'id': 0, 'role': 'client'},
                                              {'id': 1, 'role': 'master'},
                                              {'id': 2, 'role': 'admin'}]
                                             )
@@ -70,15 +70,20 @@ async def update_user_info(info: UserInfo, user: UserInDB = Depends(security.get
                 headers={"WWW-Authenticate": "Bearer"}
             )
     if info.password and not security.verify_password(info.password, user.hashed_password):
+        pop_pass = True
         fields_to_update['hashed_password'] = security.crypt(info.password)
+    else:
+        pop_pass = False
     if info.full_name and info.full_name != user.full_name:
         fields_to_update['full_name'] = info.full_name
     if info.car_model and info.car_model != user.car_model:
         fields_to_update['car_model'] = info.car_model
 
-    query = users_table.update().values(**fields_to_update).where(users_table.c.username == user.username)
-    await db.execute(query)
-    fields_to_update.pop('hashed_password')
+    if fields_to_update:
+        query = users_table.update().values(**fields_to_update).where(users_table.c.username == user.username)
+        await db.execute(query)
+        if pop_pass:
+            fields_to_update.pop('hashed_password')
     return fields_to_update
 
 
@@ -86,7 +91,7 @@ async def update_user_info(info: UserInfo, user: UserInDB = Depends(security.get
 async def get_current_user(user: UserInDB = Depends(security.get_user_by_token)):
     user = user.dict()
     user.pop('hashed_password')
-    return user
+    return dict(user)
 
 
 @router.post('/login', response_model=Token)
