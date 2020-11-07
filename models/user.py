@@ -10,8 +10,9 @@ users_table = sqlalchemy.Table(
     metadata,
     sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, unique=True),
     sqlalchemy.Column("username", sqlalchemy.String(100), unique=True, index=True),
+    sqlalchemy.Column("full_name", sqlalchemy.String(512), default=''),
     sqlalchemy.Column("hashed_password", sqlalchemy.String(512)),
-    sqlalchemy.Column("car_model", sqlalchemy.String(100)),
+    sqlalchemy.Column("car_model", sqlalchemy.String(100), default=''),
     sqlalchemy.Column("role_id", sqlalchemy.ForeignKey('roles.id')),
 )
 
