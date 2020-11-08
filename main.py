@@ -2,17 +2,26 @@ import uvicorn
 
 from fastapi import FastAPI, Depends
 
-from api import users, scheduler
-from auth import oauth2_scheme
+from api import users, scheduler, admin
+from database import db
+
 
 app = FastAPI()
 app.include_router(users.router,
                    prefix='/users'
                    )
 app.include_router(scheduler.router,
-                   prefix='/schedule',
-                   dependencies=[Depends(oauth2_scheme)]
+                   prefix='/schedule'
                    )
+app.include_router(admin.router,
+                   prefix='/admin'
+                   )
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    if db.is_connected:
+        await db.disconnect()
 
 
 if __name__ == '__main__':

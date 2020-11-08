@@ -5,18 +5,17 @@ from datetime import timedelta
 
 from models import users_table, roles_table, UserInfo, UserInDB, SecuredUserInfo, Login, Token, NewUser, NewUserResponse
 from auth import Security
-from database import db
+from database import db, connect
 
 
 # ==================================================================================
 # ======================== configuration ===========================================
 router = APIRouter()
-security = Security(db)
 
 
 @router.on_event("startup")
+@connect
 async def startup():
-    await db.connect()
     roles = await db.fetch_all(roles_table.select())
     if not roles:
         query = roles_table.insert().values([{'id': 0, 'role': 'client'},
@@ -26,17 +25,13 @@ async def startup():
         await db.execute(query)
 
 
-@router.on_event("shutdown")
-async def shutdown():
-    await db.disconnect()
-
 # ==================================================================================
 
 
 @router.post('/create_user', response_model=NewUserResponse)
 async def create_user(user: NewUser):
     query = users_table.insert().values(username=user.username,
-                                        hashed_password=security.crypt(user.password),
+                                        hashed_password=Security.crypt(user.password),
                                         car_model=user.car_model,
                                         full_name=user.full_name,
                                         role_id=0
@@ -50,7 +45,7 @@ async def create_user(user: NewUser):
 
 
 @router.patch('/update_user_info', response_model=SecuredUserInfo)
-async def update_user_info(info: UserInfo, user: UserInDB = Depends(security.get_user_by_token)):
+async def update_user_info(info: UserInfo, user: UserInDB = Depends(Security.get_user_by_token)):
     """user can provide fields username, full_name, password and car_model to update them"""
     if not info:
         return
@@ -69,9 +64,9 @@ async def update_user_info(info: UserInfo, user: UserInDB = Depends(security.get
                 detail="username already exists",
                 headers={"WWW-Authenticate": "Bearer"}
             )
-    if info.password and not security.verify_password(info.password, user.hashed_password):
+    if info.password and not Security.verify_password(info.password, user.hashed_password):
         pop_pass = True
-        fields_to_update['hashed_password'] = security.crypt(info.password)
+        fields_to_update['hashed_password'] = Security.crypt(info.password)
     else:
         pop_pass = False
     if info.full_name and info.full_name != user.full_name:
@@ -88,7 +83,7 @@ async def update_user_info(info: UserInfo, user: UserInDB = Depends(security.get
 
 
 @router.get('/me', response_model=SecuredUserInfo)
-async def get_current_user(user: UserInDB = Depends(security.get_user_by_token)):
+async def get_current_user(user: UserInDB = Depends(Security.get_user_by_token)):
     user = user.dict()
     user.pop('hashed_password')
     return dict(user)
@@ -96,7 +91,7 @@ async def get_current_user(user: UserInDB = Depends(security.get_user_by_token))
 
 @router.post('/login', response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = await security.authenticate_user(Login(username=form_data.username, password=form_data.password))
-    access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
-    token = security.create_access_token(data={"sub": user['username']}, expires_delta=access_token_expires)
+    user = await Security.authenticate_user(Login(username=form_data.username, password=form_data.password))
+    access_token_expires = timedelta(minutes=Security.ACCESS_TOKEN_EXPIRE_MINUTES)
+    token = Security.create_access_token(data={"sub": user['username']}, expires_delta=access_token_expires)
     return {"access_token": token, "token_type": "bearer"}

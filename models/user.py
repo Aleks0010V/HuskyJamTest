@@ -64,10 +64,11 @@ class UserInfo(BaseModel):
 
 
 class UserInDB(BaseModel):
-    username: Optional[str] = ''
+    username: str
     full_name: Optional[str] = ''
-    hashed_password: Optional[str] = ''
+    hashed_password: str
     car_model: Optional[str] = ''
+    role_id: int
 
 
 class SecuredUserInfo(BaseModel):

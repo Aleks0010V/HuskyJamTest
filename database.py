@@ -11,8 +11,8 @@ db = Database(HOST)
 
 def connect(foo):
     @wraps(foo)
-    async def decorate(self, *args, **kw):
-        if not self.db.is_connected:
-            await self.db.connect()
-        return await foo(self, *args, **kw)
+    async def decorate(*args, **kw):
+        if not db.is_connected:
+            await db.connect()
+        return await foo(*args, **kw)
     return decorate
