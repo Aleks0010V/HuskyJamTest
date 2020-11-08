@@ -10,7 +10,7 @@ metadata = sqlalchemy.MetaData(engine)
 users_table = sqlalchemy.Table(
     "users",
     metadata,
-    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, unique=True),
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, unique=True, autoincrement=True),
     sqlalchemy.Column("username", sqlalchemy.String(100), unique=True, index=True),
     sqlalchemy.Column("full_name", sqlalchemy.String(512), default=''),
     sqlalchemy.Column("hashed_password", sqlalchemy.String(512)),
@@ -30,7 +30,7 @@ roles_table = sqlalchemy.Table(
 tokens_table = sqlalchemy.Table(
     "tokens",
     metadata,
-    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, unique=True),
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, unique=True, autoincrement=True),
     sqlalchemy.Column('token', TEXT),
     sqlalchemy.Column("expires", sqlalchemy.DateTime()),
     sqlalchemy.Column("user_id", sqlalchemy.ForeignKey("users.id")),
@@ -64,6 +64,7 @@ class UserInfo(BaseModel):
 
 
 class UserInDB(BaseModel):
+    id: int
     username: str
     full_name: Optional[str] = ''
     hashed_password: str

@@ -4,6 +4,7 @@ from fastapi import FastAPI, Depends
 
 from api import users, scheduler, admin
 from database import db
+from auth import Security, check_admin_role
 
 
 app = FastAPI()
@@ -11,10 +12,12 @@ app.include_router(users.router,
                    prefix='/users'
                    )
 app.include_router(scheduler.router,
-                   prefix='/schedule'
+                   prefix='/schedule',
+                   dependencies=[Depends(Security.get_user_by_token)]
                    )
 app.include_router(admin.router,
-                   prefix='/admin'
+                   prefix='/admin',
+                   dependencies=[Depends(check_admin_role)]
                    )
 
 
