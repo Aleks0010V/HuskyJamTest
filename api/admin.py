@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from datetime import datetime
+from typing import Optional
 
-from auth import Security, check_admin_role
+from auth import Security
 from database import db, connect
-from models import users_table, UserInDB, schedule_table, NewUser
+from models import users_table, UserInDB, schedule_table, NewUser, get_user_time_slots
 
 
 # ==================================================================================
@@ -35,10 +36,13 @@ async def list_clients():
 
 
 @router.get('/client/{client_id}')
-async def get_clients_schedule(client_id: int, date: str = datetime.today().date().strftime("%d-%m-%Y")):
-    date_obj: datetime = datetime.strptime("%d-%m-%Y", date)  # convert string to datetime object to check everything
+async def get_clients_schedule(client_id: int, date: Optional[str] = ''):
+    if date:
+        date_obj = datetime.strptime(date, "%d-%m-%Y")
+    else:
+        date_obj = None
 
-    query = schedule_table.select().where(schedule_table.c.date_time == date and schedule_table.c.client_id == client_id)
+    query = get_user_time_slots(client_id, date_obj)
     return await db.fetch_all(query)
 
 

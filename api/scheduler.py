@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
+from sqlalchemy import and_
 
 from auth import Security
-from models import UserInDB, Appointment, users_table, schedule_table
+from models import UserInDB, Appointment, users_table, schedule_table, get_all_unavailable_time_slots_query, get_user_time_slots
 from database import db, connect
 
 
@@ -42,18 +43,26 @@ async def create_an_appointment(info: Appointment, user: UserInDB = Depends(Secu
             headers={"WWW-Authenticate": "Bearer"}
         )
     else:
+        time_exception = HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                headers={"WWW-Authenticate": "Bearer"}
+            )
         if date_time_obj.weekday() in [5, 6]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid time - weekend",
-                headers={"WWW-Authenticate": "Bearer"}
-            )
+            time_exception.detail = "Invalid time - weekend"
+            raise time_exception
         if date_time_obj.time().hour < 10 or date_time_obj.time().hour > 20:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid time - not a work hour",
-                headers={"WWW-Authenticate": "Bearer"}
-            )
+            time_exception.detail = "Invalid time - not a work hour (10 AM - 8 PM)"
+            raise time_exception
+        if date_time_obj.time().minute not in [0, 30]:  # set a session duration to be 30 minutes
+            time_exception.detail = "Invalid time - minutes should be only 0 or 30"
+            raise time_exception
+
+        # fetch all unavailable slots
+        query = get_all_unavailable_time_slots_query(info.master_id, date_time_obj)
+        async for row in db.iterate(query):  # check if desired time is not in already booked time slots
+            if date_time_obj == row[0]:
+                time_exception.detail = "Time is not available"
+                raise time_exception
 
     query = schedule_table.insert().values(user_id=user.id, master_id=info.master_id, date_time=date_time_obj)
     last_record_id = await db.execute(query)
@@ -64,7 +73,12 @@ async def create_an_appointment(info: Appointment, user: UserInDB = Depends(Secu
 @router.get('/')
 async def list_appointments(date: str = datetime.today().date().strftime("%d-%m-%Y"),
                             user: UserInDB = Depends(Security.get_user_by_token)):
-    query = schedule_table.select().where(schedule_table.c.date_time == date and schedule_table.c.client_id == user.id)
+    if date:
+        date_obj = datetime.strptime(date, "%d-%m-%Y")
+    else:
+        date_obj = None
+
+    query = get_user_time_slots(user.id, date_obj)
     return await db.fetch_all(query)
 
 
@@ -82,7 +96,8 @@ async def get_masters_schedule(master_id: int, date: str = datetime.today().date
     """
     Returns a master`s free hours for a specific day.
     """
-    date_obj: datetime = datetime.strptime(date, "%d-%m-%Y")  # convert string to datetime object to check everything
 
-    query = schedule_table.select().with_only_columns().where()
+    date_obj = datetime.strptime(date, "%d-%m-%Y")
+
+    query = get_user_time_slots(master_id, date_obj)
     return await db.fetch_all(query)
