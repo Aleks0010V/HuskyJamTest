@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import and_
 
 from auth import Security
@@ -32,6 +33,9 @@ async def startup():  # create a dummy master on first start
 
 @router.post('/create_an_appointment')
 async def create_an_appointment(info: Appointment, user: UserInDB = Depends(Security.get_user_by_token)):
+    """
+    Obviously, creates an appointment.
+    """
 
     # validate date and time
     try:
@@ -73,6 +77,9 @@ async def create_an_appointment(info: Appointment, user: UserInDB = Depends(Secu
 @router.get('/')
 async def list_appointments(date: str = datetime.today().date().strftime("%d-%m-%Y"),
                             user: UserInDB = Depends(Security.get_user_by_token)):
+    """
+    Returns user`s (NOT master`s) appointments.
+    """
     if date:
         date_obj = datetime.strptime(date, "%d-%m-%Y")
     else:
@@ -92,12 +99,30 @@ async def list_masters():
 
 
 @router.get('/master/{master_id}')
-async def get_masters_schedule(master_id: int, date: str = datetime.today().date().strftime("%d-%m-%Y")):
+async def get_masters_free_hours(master_id: int, date: Optional[str] = ''):
     """
-    Returns a master`s free hours for a specific day.
+    Returns a schedule of a specific client
     """
+    if date:
+        date_obj = datetime.strptime(date, "%d-%m-%Y")
+    else:
+        date_obj = datetime.today()
 
-    date_obj = datetime.strptime(date, "%d-%m-%Y")
+    masters_hours = get_all_unavailable_time_slots_query(master_id, date_obj)  # fetch booked hours
+    check_master = users_table.select().where(and_(users_table.c.id == master_id, users_table.c.role_id == 1))
+    timetable = []
+    if await db.fetch_one(check_master):
 
-    query = get_user_time_slots(master_id, date_obj)
-    return await db.fetch_all(query)
+        for h in range(10, 21):
+            today = datetime.today()
+            a = today.replace(hour=h, minute=0, second=0, microsecond=0)
+            b = today.replace(hour=h, minute=30, second=0, microsecond=0)
+            timetable.extend([a, b])
+
+        async for sc in db.iterate(masters_hours):
+            timetable.remove(sc[0])
+
+        for i in range(len(timetable)):
+            timetable[i] = timetable[i].strftime('%d-%m-%Y %H:%M')
+
+    return timetable
