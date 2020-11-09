@@ -1,7 +1,10 @@
 # HuskyJam test task
 
-<pre>You can run an app with <code>docker-compose up</code> or <code>docker-compose up --build</code>
-command for the first run. Ports 80 and 3306 must be free.</pre>
+### App run
+<pre><code>docker-compose up</code>
+or
+<code>docker-compose up --build</code></pre>
+<pre>Ports 80 and 3306 must be free.</pre>
 
 #### Endpoints
 <p>Info about schemas etc. you can find on http://127.0.0.1/docs</p>
