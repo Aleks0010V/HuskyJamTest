@@ -5,8 +5,9 @@ from datetime import timedelta
 from auth import Security
 
 from database.models import UserInfo, UserInDB, SecuredUserInfo, Login, Token, NewUser, NewUserResponse
-from database.schemas import users_table, roles_table
+from database.schemas import roles_table
 from database.database import db, connect
+from database.crud import User
 
 
 # ==================================================================================
@@ -31,12 +32,12 @@ async def startup():
 
 @router.post('/create_user', response_model=NewUserResponse)
 async def create_user(user: NewUser):
-    query = users_table.insert().values(username=user.username,
-                                        hashed_password=Security.crypt(user.password),
-                                        car_model=user.car_model,
-                                        full_name=user.full_name,
-                                        role_id=0
-                                        )
+    query = User.create_user(username=user.username,
+                             hashed_password=Security.crypt(user.password),
+                             car_model=user.car_model,
+                             full_name=user.full_name,
+                             role_id=0
+                             )
     if not db.is_connected:
         await db.connect()
     last_record_id = await db.execute(query)
@@ -55,7 +56,7 @@ async def update_user_info(info: UserInfo, user: UserInDB = Depends(Security.get
 
     fields_to_update = {}
     if info.username and info.username != user.username:
-        check_name = users_table.select().where(users_table.c.username == info.username)
+        check_name = User.check_name(info.username)
         res = await db.fetch_one(check_name)
         if not res:
             fields_to_update['username'] = info.username
@@ -76,7 +77,7 @@ async def update_user_info(info: UserInfo, user: UserInDB = Depends(Security.get
         fields_to_update['car_model'] = info.car_model
 
     if fields_to_update:
-        query = users_table.update().values(**fields_to_update).where(users_table.c.username == user.username)
+        query = User.update_user_info(username=user.username, **fields_to_update)
         await db.execute(query)
         if pop_pass:
             fields_to_update.pop('hashed_password')

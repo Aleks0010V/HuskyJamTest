@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import and_
 
 from auth import Security
 
 from database.models import UserInDB, Appointment
-from database.schemas import users_table, schedule_table
-from database.crud import get_all_unavailable_time_slots_query, get_user_time_slots
+from database.schemas import users_table
+from database.crud import User, Schedule
 from database.database import db, connect
 
 
@@ -65,13 +64,13 @@ async def create_an_appointment(info: Appointment, user: UserInDB = Depends(Secu
             raise time_exception
 
         # fetch all unavailable slots
-        query = get_all_unavailable_time_slots_query(info.master_id, date_time_obj)
+        query = Schedule.get_all_unavailable_time_slots_query(info.master_id, date_time_obj)
         async for row in db.iterate(query):  # check if desired time is not in already booked time slots
             if date_time_obj == row[0]:
                 time_exception.detail = "Time is not available"
                 raise time_exception
 
-    query = schedule_table.insert().values(user_id=user.id, master_id=info.master_id, date_time=date_time_obj)
+    query = Schedule.create_an_appointment(user_id=user.id, master_id=info.master_id, date_time=date_time_obj)
     last_record_id = await db.execute(query)
     res = {**info.dict(), "id": last_record_id}
     return res
@@ -88,7 +87,7 @@ async def list_appointments(date: str = datetime.today().date().strftime("%d-%m-
     else:
         date_obj = None
 
-    query = get_user_time_slots(user.id, date_obj)
+    query = Schedule.get_user_time_slots(user.id, date_obj)
     return await db.fetch_all(query)
 
 
@@ -97,7 +96,7 @@ async def list_masters():
     """
     Returns a list of all masters.
     """
-    query = users_table.select().with_only_columns([users_table.c.id, users_table.c.full_name]).where(users_table.c.role_id == 1)
+    query = User.list_masters()
     return await db.fetch_all(query)
 
 
@@ -111,8 +110,8 @@ async def get_masters_free_hours(master_id: int, date: Optional[str] = ''):
     else:
         date_obj = datetime.today()
 
-    masters_hours = get_all_unavailable_time_slots_query(master_id, date_obj)  # fetch booked hours
-    check_master = users_table.select().where(and_(users_table.c.id == master_id, users_table.c.role_id == 1))
+    masters_hours = Schedule.get_all_unavailable_time_slots_query(master_id, date_obj)  # fetch booked hours
+    check_master = User.get_master(master_id)
     timetable = []
     if await db.fetch_one(check_master):
 

@@ -7,7 +7,7 @@ from passlib.context import CryptContext
 
 from database.database import connect, db
 from database.models import UserInfo, UserInDB, Login
-from database.schemas import users_table
+from database.crud import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="users/login")
 
@@ -31,10 +31,10 @@ class Security:
 
     @staticmethod
     @connect
-    async def get_user_by_id(user_id: int) -> Union[None, UserInfo]:
+    async def search_user_by_id(user_id: int) -> Union[None, UserInfo]:
         if not user_id:
             return
-        get_user_query = users_table.select().where(users_table.c.id == user_id)
+        get_user_query = User.get_user_by_id(user_id)
         if not (res := await Security.db.fetch_one(get_user_query)):
             return
         else:
@@ -42,10 +42,10 @@ class Security:
 
     @staticmethod
     @connect
-    async def get_user_by_username(username: str) -> Union[None, UserInfo]:
+    async def search_user_by_username(username: str) -> Union[None, UserInfo]:
         if not username:
             return
-        get_user_query = users_table.select().where(users_table.c.username == username)
+        get_user_query = User.get_user_by_username(username)
         if not (res := await Security.db.fetch_one(get_user_query)):
             return
         else:
@@ -57,9 +57,9 @@ class Security:
         if not user:
             return
 
-        get_user_query = users_table.select().where(users_table.c.username == user.username)
-        if not (res := await Security.db.fetch_one(get_user_query)) or not Security.verify_password(user.password,
-                                                                                            res['hashed_password']):
+        get_user_query = User.get_user_by_username(user.username)
+        if not (res := await Security.db.fetch_one(get_user_query)) or not \
+                Security.verify_password(user.password, res['hashed_password']):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect username or password",
@@ -84,7 +84,7 @@ class Security:
                 raise credentials_exception
         except JWTError:
             raise credentials_exception
-        user_query = users_table.select().where(users_table.c.username == username)
+        user_query = User.get_user_by_username(username)
         user = await db.fetch_one(user_query)
         if user is None:
             raise credentials_exception

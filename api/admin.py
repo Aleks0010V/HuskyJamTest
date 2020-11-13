@@ -7,7 +7,7 @@ from auth import Security
 from database.database import db, connect
 from database.models import NewUser
 from database.schemas import users_table
-from database.crud import get_user_time_slots, get_all_unavailable_time_slots_query
+from database.crud import Schedule, User
 
 
 # ==================================================================================
@@ -37,7 +37,7 @@ async def list_clients(date: Optional[str] = ''):
     """
     Returns a list of clients. Will be extended to return a list of clients for a specific day
     """
-    query = users_table.select().with_only_columns([users_table.c.id, users_table.c.full_name]).where(users_table.c.role_id == 0)
+    query = User.list_clients(date)
     return await db.fetch_all(query)
 
 
@@ -52,7 +52,7 @@ async def get_clients_schedule(client_id: int, date: Optional[str] = ''):
         # this is done so because of get_user_time_slots implementation to return all ever created user`s appointments
         date_obj = None
 
-    query = get_user_time_slots(client_id, date_obj)
+    query = Schedule.get_user_time_slots(client_id, date_obj)
     return await db.fetch_all(query)
 
 
@@ -66,17 +66,17 @@ async def get_masters_schedule(master_id: int, date: Optional[str] = ''):
     else:
         date_obj = datetime.today()
 
-    masters_hours = get_all_unavailable_time_slots_query(master_id, date_obj)
+    masters_hours = Schedule.get_all_unavailable_time_slots_query(master_id, date_obj)
     return await db.fetch_all(masters_hours)
 
 
 @router.post('/create_master')
 async def create_master(user: NewUser):
-    query = users_table.insert().values(username=user.username,
-                                        hashed_password=Security.crypt(user.password),
-                                        full_name=user.full_name,
-                                        role_id=1
-                                        )
+    query = User.create_user(username=user.username,
+                               hashed_password=Security.crypt(user.password),
+                               full_name=user.full_name,
+                               role_id=1
+                               )
     if not db.is_connected:
         await db.connect()
     last_record_id = await db.execute(query)
