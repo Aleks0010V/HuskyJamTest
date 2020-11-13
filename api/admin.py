@@ -3,8 +3,11 @@ from datetime import datetime
 from typing import Optional
 
 from auth import Security
-from database import db, connect
-from models import users_table, NewUser, get_user_time_slots, get_all_unavailable_time_slots_query
+
+from database.database import db, connect
+from database.models import NewUser
+from database.schemas import users_table
+from database.crud import get_user_time_slots, get_all_unavailable_time_slots_query
 
 
 # ==================================================================================

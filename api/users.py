@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
 
-
-from models import users_table, roles_table, UserInfo, UserInDB, SecuredUserInfo, Login, Token, NewUser, NewUserResponse
 from auth import Security
-from database import db, connect
+
+from database.models import UserInfo, UserInDB, SecuredUserInfo, Login, Token, NewUser, NewUserResponse
+from database.schemas import users_table, roles_table
+from database.database import db, connect
 
 
 # ==================================================================================

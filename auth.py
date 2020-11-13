@@ -1,12 +1,13 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from datetime import datetime, timedelta
-from models import users_table, UserInfo, UserInDB, Login
 from jose import jwt, JWTError
 from typing import Optional, Union
 from passlib.context import CryptContext
 
-from database import connect, db
+from database.database import connect, db
+from database.models import UserInfo, UserInDB, Login
+from database.schemas import users_table
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="users/login")
 

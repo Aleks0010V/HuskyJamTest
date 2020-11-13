@@ -4,8 +4,11 @@ from typing import Optional
 from sqlalchemy import and_
 
 from auth import Security
-from models import UserInDB, Appointment, users_table, schedule_table, get_all_unavailable_time_slots_query, get_user_time_slots
-from database import db, connect
+
+from database.models import UserInDB, Appointment
+from database.schemas import users_table, schedule_table
+from database.crud import get_all_unavailable_time_slots_query, get_user_time_slots
+from database.database import db, connect
 
 
 # ==================================================================================

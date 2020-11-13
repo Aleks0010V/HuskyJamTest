@@ -3,7 +3,7 @@ import uvicorn
 from fastapi import FastAPI, Depends
 
 from api import users, scheduler, admin
-from database import db
+from database.database import db
 from auth import Security, check_admin_role
 
 
